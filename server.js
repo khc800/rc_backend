@@ -1112,7 +1112,145 @@ app.get('/api/current-week-books', async (req, res) => {
   
   
   
-  
+
+  // === helpers (put near your other SQL helpers) ===
+const WEEK_START_EXPR = `date_trunc('week', l.date + interval '2 days') - interval '2 days'`;
+
+// === 1) Best single day (per reader, any date) ===
+app.get('/api/records/top-day', async (req,res)=>{
+  const lim = Math.max(1, parseInt(req.query.limit||10,10));
+  const sql = `
+    SELECT name, day, minutes::int
+    FROM (
+      SELECT l.name,
+             l.date::date AS day,
+             SUM(l.minutes) AS minutes
+      FROM logs l
+      GROUP BY l.name, day
+    ) t
+    ORDER BY minutes DESC, name ASC
+    LIMIT $1`;
+  const { rows } = await pool.query(sql, [lim]);
+  res.json({ items: rows });
+});
+
+// === 2) Best week total (Saturday→Friday) ===
+app.get('/api/records/top-week', async (req,res)=>{
+  const lim = Math.max(1, parseInt(req.query.limit||10,10));
+  const sql = `
+    SELECT name, week_start::date AS week_start, minutes::int
+    FROM (
+      SELECT l.name,
+             ${WEEK_START_EXPR} AS week_start,
+             SUM(l.minutes) AS minutes
+      FROM logs l
+      GROUP BY l.name, week_start
+    ) t
+    ORDER BY minutes DESC, name ASC
+    LIMIT $1`;
+  const { rows } = await pool.query(sql, [lim]);
+  res.json({ items: rows });
+});
+
+// === 3) Best month total ===
+app.get('/api/records/top-month', async (req,res)=>{
+  const lim = Math.max(1, parseInt(req.query.limit||10,10));
+  const sql = `
+    SELECT name, month_start::date AS month_start, minutes::int
+    FROM (
+      SELECT l.name,
+             date_trunc('month', l.date)::date AS month_start,
+             SUM(l.minutes) AS minutes
+      FROM logs l
+      GROUP BY l.name, month_start
+    ) t
+    ORDER BY minutes DESC, name ASC
+    LIMIT $1`;
+  const { rows } = await pool.query(sql, [lim]);
+  res.json({ items: rows });
+});
+
+// === 4) Best all-time total ===
+app.get('/api/records/top-total', async (req,res)=>{
+  const lim = Math.max(1, parseInt(req.query.limit||10,10));
+  const sql = `
+    SELECT l.name, SUM(l.minutes)::int AS minutes
+    FROM logs l
+    GROUP BY l.name
+    ORDER BY minutes DESC, name ASC
+    LIMIT $1`;
+  const { rows } = await pool.query(sql, [lim]);
+  res.json({ items: rows });
+});
+
+// === 5) Longest streak (minutes>=1) — pure SQL, gaps-and-islands ===
+app.get('/api/records/longest-streak', async (req,res)=>{
+  const lim = Math.max(1, parseInt(req.query.limit||10,10));
+  const sql = `
+    WITH daily AS (
+      SELECT name, date::date AS d, SUM(minutes) AS m
+      FROM logs
+      GROUP BY name, d
+    ),
+    active AS (
+      SELECT name, d
+      FROM daily
+      WHERE m >= 1
+    ),
+    seqs AS (
+      SELECT
+        name,
+        d,
+        d - (ROW_NUMBER() OVER (PARTITION BY name ORDER BY d)) * interval '1 day' AS grp
+      FROM active
+    ),
+    lens AS (
+      SELECT name, MIN(d)::date AS start_d, MAX(d)::date AS end_d, COUNT(*)::int AS len
+      FROM seqs
+      GROUP BY name, grp
+    )
+    SELECT name, len AS days, start_d, end_d
+    FROM (
+      SELECT name, len, start_d, end_d,
+             ROW_NUMBER() OVER (PARTITION BY name ORDER BY len DESC, end_d DESC) AS rnk
+      FROM lens
+    ) x
+    WHERE rnk = 1
+    ORDER BY days DESC, name ASC
+    LIMIT $1`;
+  const { rows } = await pool.query(sql, [lim]);
+  res.json({ items: rows });
+});
+
+// === (Optional) Best rolling 7-day window per reader ===
+app.get('/api/records/top-rolling7', async (req,res)=>{
+  const lim = Math.max(1, parseInt(req.query.limit||10,10));
+  const sql = `
+    WITH daily AS (
+      SELECT name, date::date AS d, SUM(minutes)::int AS m
+      FROM logs
+      GROUP BY name, d
+    ),
+    roll AS (
+      SELECT name, d,
+             SUM(m) OVER (PARTITION BY name ORDER BY d
+                          ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS m7
+      FROM daily
+    ),
+    best AS (
+      SELECT name, m7::int AS minutes, d AS window_end,
+             ROW_NUMBER() OVER (PARTITION BY name ORDER BY m7 DESC, d DESC) AS rnk
+      FROM roll
+    )
+    SELECT name, minutes, window_end
+    FROM best
+    WHERE rnk = 1
+    ORDER BY minutes DESC, name ASC
+    LIMIT $1`;
+  const { rows } = await pool.query(sql, [lim]);
+  res.json({ items: rows });
+});
+
   
   
   
