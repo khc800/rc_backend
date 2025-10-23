@@ -745,14 +745,22 @@ app.get('/api/records/top-rolling7', async (req,res)=>{
   
   
 // ---- Admin auth
+const isProd = process.env.NODE_ENV === 'production';
+
 app.post('/api/admin/login', express.json(), (req,res)=>{
   const { password } = req.body || {};
-  if(password === ADMIN_PASSWORD){
-    res.cookie('adm', 'ok', { httpOnly:true, sameSite:'strict', secure:true, maxAge: 7*24*3600e3 });
+  if (password === ADMIN_PASSWORD) {
+    res.cookie('adm', 'ok', {
+      httpOnly: true,
+      sameSite: 'strict',
+      secure: isProd,           // only require HTTPS in production
+      maxAge: 7 * 24 * 3600e3
+    });
     return res.json({ ok:true });
   }
   res.status(401).json({ error:'bad password' });
 });
+
 app.post('/api/admin/logout', requireAdmin, (_req,res)=>{
   res.clearCookie('adm'); res.json({ ok:true });
 });
