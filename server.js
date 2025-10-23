@@ -1,26 +1,25 @@
 
 
-
-
-
-
-
-
-
+const express = require('express');
+const { Pool } = require('pg');
+const cors = require('cors');
 const cookie = require('cookie-parser');
+require('dotenv').config();
+
+const app = express();
+const port = process.env.PORT || 3000;
+
+// middleware order
+app.use(express.json());
+app.use(cors());
 app.use(cookie());
+
+// admin helpers
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'change-me';
 function isAdmin(req){ return req.cookies?.adm === 'ok'; }
 function requireAdmin(req,res,next){ if(!isAdmin(req)) return res.status(401).json({error:'unauthorized'}); next(); }
 
 
-const express = require('express');
-const { Pool } = require('pg');
-const cors = require('cors');
-require('dotenv').config();
-
-const app = express();
-const port = process.env.PORT || 3000;
 
 // ---------- DB (use Pool) ----------
 const pool = new Pool({
