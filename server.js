@@ -1085,30 +1085,33 @@ app.get('/api/discipline', async (req, res) => {
 
 // GET /api/current-week-books?date=YYYY-MM-DD
 app.get('/api/current-week-books', async (req, res) => {
-    const ref = req.query.date || new Date().toISOString().slice(0,10);
-    try {
-      const { rows } = await pool.query(`
-        WITH bounds AS (
-          SELECT (date_trunc('week', $1::date + interval '2 days') - interval '2 days') AS wstart
-        )
-        SELECT book FROM (
-          SELECT DISTINCT trim(l.book) AS book
-          FROM logs l
-          CROSS JOIN bounds b
-          WHERE l.book IS NOT NULL
-            AND length(trim(l.book)) > 0
-            AND l.date >= b.wstart
-            AND l.date <  b.wstart + interval '7 days'
-        ) t
-        ORDER BY lower(book)
-      `, [ref]);
-  
-      res.json({ books: rows.map(r => r.book) });
-    } catch (e) {
-      console.error('current-week-books error:', e.message);
-      res.status(500).json({ error: 'Error fetching week books' });
-    }
-  });
+  const ref = req.query.date || new Date().toISOString().slice(0,10);
+  try {
+    const { rows } = await pool.query(`
+      WITH bounds AS (
+        SELECT (date_trunc('week', $1::date + interval '2 days') - interval '2 days') AS wstart
+      )
+      SELECT
+        trim(l.book) AS book,
+        ARRAY_AGG(DISTINCT l.name ORDER BY l.name) AS readers,
+        COUNT(DISTINCT l.name)::int AS count
+      FROM logs l
+      CROSS JOIN bounds b
+      WHERE l.book IS NOT NULL
+        AND length(trim(l.book)) > 0
+        AND l.date >= b.wstart
+        AND l.date <  b.wstart + interval '7 days'
+      GROUP BY trim(l.book)
+      ORDER BY lower(trim(l.book))
+    `, [ref]);
+
+    res.json({ books: rows.map(r => ({ book: r.book, readers: r.readers, count: r.count })) });
+  } catch (e) {
+    console.error('current-week-books error:', e.message);
+    res.status(500).json({ error: 'Error fetching week books' });
+  }
+});
+
   
   
   
