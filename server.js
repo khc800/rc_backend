@@ -1074,7 +1074,8 @@ app.get('/api/discipline', async (req, res) => {
     warning.sort((a,b)=> a.minutes - b.minutes || a.name.localeCompare(b.name,'ar'));
     removed.sort((a,b)=> a.minutes - b.minutes || a.name.localeCompare(b.name,'ar'));
 
-    res.json({ ok:true, warning, removed });
+    // res.json({ ok:true, warning, removed });
+    res.json({ ok:true, rows, warning, removed });
   } catch (err) {
     console.error('Error computing discipline:', err);
     res.status(500).json({ error: 'Error computing discipline' });
