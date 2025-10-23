@@ -1,10 +1,11 @@
 
 
+require('dotenv').config(); // must be first
 const express = require('express');
-const { Pool } = require('pg');
 const cors = require('cors');
 const cookie = require('cookie-parser');
-require('dotenv').config();
+const { Pool } = require('pg');
+
 
 const app = express();
 const port = process.env.PORT || 3000;
